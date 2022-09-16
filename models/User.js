@@ -15,7 +15,7 @@ const User = db.define(
       allowNull: false,
     },
     mobileNo: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.STRING,
       allowNull: false,
       unique: true,
     },
