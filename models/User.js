@@ -23,6 +23,12 @@ const User = db.define(
       type: DataTypes.STRING,
       allowNull: false,
     },
+    otp: {
+      type: DataTypes.STRING,
+    },
+    expiration_time: {
+      type: DataTypes.DATE,
+    },
   },
   { timestamps: false, freezeTableName: true }
 );

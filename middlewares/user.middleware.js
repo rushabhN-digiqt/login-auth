@@ -11,7 +11,7 @@ const userMiddleware = [
 
 const loginMiddleware = [
   check("email", "Email or Mobile  is required.").notEmpty(),
-  check("password", "Password is required.").notEmpty(),
+  // check("password", "Password is required.").notEmpty(),
 ];
 
 module.exports = { userMiddleware, loginMiddleware };

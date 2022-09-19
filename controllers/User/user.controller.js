@@ -1,11 +1,18 @@
 const { v4 } = require("uuid");
 const User = require("../../models/User");
-const { errorResponse, successResponse } = require("../../utils/utils");
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
+const {
+  errorResponse,
+  successResponse,
+  generateOtp,
+  generateToken,
+  encryptedString,
+  decryptedString,
+  addMinutes,
+} = require("../../utils/utils");
 var Sequelize = require("sequelize");
 const Op = Sequelize.Op;
 
+// New user Registration API
 const addNewUser = async (req, res) => {
   try {
     const { email, mobileNo, password } = req.body;
@@ -26,8 +33,9 @@ const addNewUser = async (req, res) => {
     if (mobile) {
       return errorResponse(res, { msg: "Mobile no already exist" });
     }
-    const salt = await bcrypt.genSalt(10);
-    const encryptPass = await bcrypt.hash(password, salt);
+
+    const encryptPass = await encryptedString(password);
+
     const userDetail = await User.create({
       email: email,
       password: encryptPass,
@@ -41,8 +49,9 @@ const addNewUser = async (req, res) => {
   }
 };
 
+//Login api with email/mobile and password and with otp
 const loginUser = async (req, res) => {
-  const { email, password, otpBased } = req.body;
+  const { email, password, otpBased, otp } = req.body;
   if (!otpBased) {
     try {
       let userEmail = await User.findOne({
@@ -50,20 +59,54 @@ const loginUser = async (req, res) => {
           [Op.or]: [{ email: email }, { mobileNo: email }],
         },
       });
+      if (!userEmail) errorResponse(res, { message: "Invalid credentials" });
+
+      const isMatch = await decryptedString(password, userEmail?.password);
+      if (!isMatch)
+        return errorResponse(res, { message: "Invalid credentials" });
+
+      const accessToken = generateToken(userEmail.userId);
+      return successResponse(res, { token: accessToken });
+    } catch (err) {
+      console.log(err);
+      return errorResponse(res, { msg: "Internal server error" });
+    }
+  } else {
+    try {
+      let userEmail = await User.findOne({
+        where: {
+          [Op.or]: [{ email: email }, { mobileNo: email }],
+        },
+      });
+
+      if (otpBased && otp === "")
+        return errorResponse(res, { msg: "Otp required!" });
+
+      // Expired otp validation
+      let currentMinutes =
+        (await Math.floor(new Date().getTime() / (1000 * 60))) - 1;
+      let expiryMinute =
+        (await Math.floor(
+          new Date(userEmail.expiration_time).getTime() / (1000 * 60)
+        )) - 1;
+      if (expiryMinute < currentMinutes) {
+        userEmail.expiration_time = null;
+        userEmail.otp = null;
+        userEmail.save();
+        return errorResponse(res, { msg: "otp expired!" });
+      }
 
       if (!userEmail) errorResponse(res, { message: "Invalid credentials" });
 
-      const isMatch = await bcrypt.compare(password, userEmail?.password);
-      if (!isMatch)
-        return errorResponse(res, { message: "Invalid credentials" });
-      let payLoad = {
-        user: {
-          id: userEmail.userId,
-        },
-      };
-      const accessToken = await jwt.sign(payLoad, process.env.JWTKEY, {
-        expiresIn: 900,
-      });
+      const isMatch = await decryptedString(otp, userEmail?.otp);
+      if (!isMatch) return errorResponse(res, { msg: "Incorrect otp!" });
+
+      const accessToken = generateToken(userEmail.userId);
+
+      userEmail.otp = null;
+      userEmail.expiration_time = null;
+      await userEmail.save();
+
       return successResponse(res, { token: accessToken });
     } catch (err) {
       console.log(err);
@@ -72,24 +115,35 @@ const loginUser = async (req, res) => {
   }
 };
 
+// Send Login otp API
 const sendLoginOtp = async (req, res) => {
   try {
     const { email } = req.body;
     let userEmail = await User.findOne({
       where: {
-        email: email,
+        [Op.or]: [{ email: email }, { mobileNo: email }],
       },
     });
     if (!userEmail)
       return errorResponse(res, { msg: "Email or Mobile no not exist" });
-    // console.log(Math.floor(100000 + Math.random() * 900000));
-    let otpCode = Math.floor(100000 + Math.random() * 900000);
+
+    let otpCode = await generateOtp();
+    const now = new Date();
+    const expiryTime = await addMinutes(now, 1);
+    const encryptOtp = await encryptedString(otpCode.toString());
+    userEmail.otp = encryptOtp;
+    userEmail.expiration_time = expiryTime;
+    await userEmail.save();
+    console.log(otpCode);
+
+    return successResponse(res, { msg: "otp was successfully sent." });
   } catch (err) {
     console.log(err);
     return errorResponse(res, { msg: "Internal server error" });
   }
 };
 
+//Get user info with passing with token
 const allUserEmail = async (req, res) => {
   try {
     const userEmail = await User.findAll({
@@ -105,4 +159,9 @@ const allUserEmail = async (req, res) => {
   }
 };
 
-module.exports = { addNewUser, loginUser, sendLoginOtp, allUserEmail };
+module.exports = {
+  addNewUser,
+  loginUser,
+  sendLoginOtp,
+  allUserEmail,
+};
