@@ -78,6 +78,11 @@ const loginUser = async (req, res) => {
           [Op.or]: [{ email: email }, { mobileNo: email }],
         },
       });
+      if (!userEmail)
+        return errorResponse(res, { message: "Invalid credentials" });
+
+      const isMatch = await decryptedString(otp, userEmail?.otp);
+      if (!isMatch) return errorResponse(res, { msg: "Incorrect otp!" });
 
       if (otpBased && otp === "")
         return errorResponse(res, { msg: "Otp required!" });
@@ -95,11 +100,6 @@ const loginUser = async (req, res) => {
         userEmail.save();
         return errorResponse(res, { msg: "otp expired!" });
       }
-
-      if (!userEmail) errorResponse(res, { message: "Invalid credentials" });
-
-      const isMatch = await decryptedString(otp, userEmail?.otp);
-      if (!isMatch) return errorResponse(res, { msg: "Incorrect otp!" });
 
       const accessToken = generateToken(userEmail.userId);
 
