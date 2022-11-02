@@ -134,8 +134,7 @@ const sendLoginOtp = async (req, res) => {
     userEmail.otp = encryptOtp;
     userEmail.expiration_time = expiryTime;
     await userEmail.save();
-    console.log(otpCode);
-    console.log(userEmail);
+    // console.log(otpCode);
 
     return successResponse(res, { msg: "otp was successfully sent." });
   } catch (err) {
